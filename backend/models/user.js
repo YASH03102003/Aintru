@@ -1,23 +1,27 @@
-const users = [];
+const mongoose = require('mongoose');
 
-function addUser(user) {
-  user.isVerified = user.isVerified || false;
-  user.verificationToken = user.verificationToken || null;
-  users.push(user);
-  return user;
-}
+const UserSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String }, // hashed password (if using local auth)
+  avatar: { type: String },   // profile picture URL
+  skills: [String],           // array of skills
+  dreamCompanies: [String],   // array of target companies
+  dreamRoles: [String],       // array of target roles
+  resume: { type: mongoose.Schema.Types.ObjectId, ref: 'Resume' }, // latest resume
+  resumes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Resume' }], // all resumes
+  interviews: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Interview' }], // all interviews
+  username: { type: String, unique: true, sparse: true }, // set after signup
+  mobile: { type: String, unique: true, sparse: true },
+  gender: { type: String, enum: ['male', 'female', 'other'] },
+  institute: { type: String },
+  year: { type: String },
+  isStudent: { type: Boolean },
+  currentCompany: { type: String },
+  currentPosition: { type: String },
+  isVerified: { type: Boolean, default: false },
+  verificationToken: { type: String },
+  createdAt: { type: Date, default: Date.now }
+});
 
-function findUserByEmail(email) {
-  return users.find(u => u.email === email);
-}
-
-function findUserByProvider(provider, providerId) {
-  return users.find(u => u.provider === provider && u.providerId === providerId);
-}
-
-module.exports = {
-  addUser,
-  findUserByEmail,
-  findUserByProvider,
-  users // for debugging
-}; 
+module.exports = mongoose.model('User', UserSchema); 

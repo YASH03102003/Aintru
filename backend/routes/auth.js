@@ -1,122 +1,147 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const passport = require('passport');
-const crypto = require('crypto');
-const nodemailer = require('nodemailer');
-const { addUser, findUserByEmail, findUserByProvider } = require('../models/user');
-
 const router = express.Router();
+const User = require('../models/user');
+const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 
-// JWT secret (in real app, use process.env)
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
-const EMAIL_FROM = process.env.EMAIL_FROM || 'no-reply@aintru.com';
-const EMAIL_USER = process.env.EMAIL_USER || '';
-const EMAIL_PASS = process.env.EMAIL_PASS || '';
-
-// Setup nodemailer transporter (for demo: use ethereal or your SMTP)
+// Helper: create Nodemailer transporter
 const transporter = nodemailer.createTransport({
-  service: 'gmail', // or your provider
+  service: 'gmail',
   auth: {
-    user: EMAIL_USER,
-    pass: EMAIL_PASS,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
-// Email/password signup with verification
-router.post('/signup', async (req, res) => {
-  const { email, password, name } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
-  if (findUserByEmail(email)) return res.status(400).json({ error: 'User already exists' });
-  const hashed = await bcrypt.hash(password, 10);
-  const verificationToken = crypto.randomBytes(32).toString('hex');
-  const user = addUser({ email, password: hashed, name, provider: 'local', isVerified: false, verificationToken });
-
-  // Send verification email
-  const verifyUrl = `http://localhost:5173/verify?token=${verificationToken}&email=${encodeURIComponent(email)}`;
+// JWT auth middleware
+function authenticateJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, error: 'No token provided.' });
+  }
+  const token = authHeader.split(' ')[1];
   try {
-    await transporter.sendMail({
-      from: EMAIL_FROM,
-      to: email,
-      subject: 'Verify your Aintru account',
-      html: `<p>Hi ${name || ''},</p><p>Please verify your email by clicking <a href="${verifyUrl}">here</a>.</p>`
-    });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret');
+    req.userId = decoded.userId;
+    next();
   } catch (err) {
-    console.error('Nodemailer error:', err);
-    return res.status(500).json({ error: 'Failed to send verification email' });
+    return res.status(401).json({ success: false, error: 'Invalid token.' });
   }
+}
 
-  res.json({ message: 'Signup successful. Please check your email to verify your account.' });
+// POST /api/auth/signup
+router.post('/signup', async (req, res) => {
+  try {
+    const { email, password, mobile, name } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: 'Email and password are required.' });
+    }
+    // Check for duplicate email or mobile
+    const existingUser = await User.findOne({ $or: [ { email }, { mobile } ] });
+    if (existingUser) {
+      return res.status(409).json({ success: false, error: 'Email or mobile already in use.' });
+    }
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    // Generate verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const user = new User({ email, password: hashedPassword, mobile, name, verificationToken, isVerified: false });
+    await user.save();
+    // Send verification email
+    const verifyUrl = `http://localhost:3000/api/auth/verify-email?token=${verificationToken}`;
+    await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Aintru Email Verification',
+      html: `<h2>Welcome to Aintru!</h2><p>Please verify your email by clicking the link below:</p><a href="${verifyUrl}">${verifyUrl}</a>`
+    });
+    res.json({ success: true, message: 'Signup successful. Please check your email to verify your account.' });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
 });
 
-// Email verification endpoint
-router.get('/verify', (req, res) => {
-  const { token, email } = req.query;
-  const user = findUserByEmail(email);
-  if (!user || user.verificationToken !== token) {
-    return res.status(400).send('Invalid or expired verification link.');
+// GET /api/auth/verify-email
+router.get('/verify-email', async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token) return res.status(400).send('Invalid or missing token.');
+    const user = await User.findOne({ verificationToken: token });
+    if (!user) return res.status(400).send('Invalid or expired token.');
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    await user.save();
+    res.send('Email verified successfully! You can now log in.');
+  } catch (err) {
+    res.status(400).send('Verification failed.');
   }
-  user.isVerified = true;
-  user.verificationToken = null;
-  res.send('Email verified! You can now log in.');
 });
 
-// Email/password login (only if verified)
+// POST /api/auth/test-create-user
+router.post('/test-create-user', async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const user = new User({ name, email });
+    await user.save();
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// POST /api/auth/login
 router.post('/login', async (req, res) => {
+  try {
   const { email, password } = req.body;
-  const user = findUserByEmail(email);
-  if (!user) return res.status(400).json({ error: 'Invalid credentials' });
-  if (!user.isVerified) return res.status(403).json({ error: 'Please verify your email before logging in.' });
-  const valid = await bcrypt.compare(password, user.password);
-  if (!valid) return res.status(400).json({ error: 'Invalid credentials' });
-  const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-  res.json({ user: { email: user.email, name: user.name }, token });
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: 'Email and password are required.' });
+    }
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ success: false, error: 'Invalid credentials' });
+    }
+    // Success: return user info (do not return password)
+    res.json({ success: true, user: { _id: user._id, email: user.email, mobile: user.mobile, username: user.username } });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
 });
 
-// Google OAuth routes
-router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
-
-router.get('/google/callback', 
-  passport.authenticate('google', { failureRedirect: 'http://localhost:5173/login?error=oauth_failed' }), 
-  (req, res) => {
-    try {
-      const user = req.user;
-      const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-      
-      // Redirect to frontend with token
-      res.redirect(`http://localhost:5173/oauth-success?token=${token}&user=${encodeURIComponent(JSON.stringify({
-        email: user.email,
-        name: user.name,
-        avatar: user.avatar
-      }))}`);
-    } catch (error) {
-      console.error('Google OAuth error:', error);
-      res.redirect('http://localhost:5173/login?error=oauth_failed');
+// POST /api/auth/complete-profile (JWT protected)
+router.post('/complete-profile', authenticateJWT, async (req, res) => {
+  try {
+    const { username, mobile, gender, institute, year, isStudent, currentCompany, currentPosition } = req.body;
+    const userId = req.userId;
+    // Check for unique username and mobile
+    if (username) {
+      const existingUsername = await User.findOne({ username, _id: { $ne: userId } });
+      if (existingUsername) return res.status(409).json({ success: false, error: 'Username already taken.' });
     }
-  }
-);
-
-// GitHub OAuth routes
-router.get('/github', passport.authenticate('github', { scope: ['user:email'] }));
-
-router.get('/github/callback', 
-  passport.authenticate('github', { failureRedirect: 'http://localhost:5173/login?error=oauth_failed' }), 
-  (req, res) => {
-    try {
-      const user = req.user;
-      const token = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-      
-      // Redirect to frontend with token
-      res.redirect(`http://localhost:5173/oauth-success?token=${token}&user=${encodeURIComponent(JSON.stringify({
-        email: user.email,
-        name: user.name,
-        avatar: user.avatar
-      }))}`);
-    } catch (error) {
-      console.error('GitHub OAuth error:', error);
-      res.redirect('http://localhost:5173/login?error=oauth_failed');
+    if (mobile) {
+      const existingMobile = await User.findOne({ mobile, _id: { $ne: userId } });
+      if (existingMobile) return res.status(409).json({ success: false, error: 'Mobile already in use.' });
     }
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, error: 'User not found.' });
+    user.username = username || user.username;
+    user.mobile = mobile || user.mobile;
+    user.gender = gender || user.gender;
+    user.institute = institute || user.institute;
+    user.year = year || user.year;
+    user.isStudent = typeof isStudent === 'boolean' ? isStudent : user.isStudent;
+    user.currentCompany = currentCompany || user.currentCompany;
+    user.currentPosition = currentPosition || user.currentPosition;
+    await user.save();
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
   }
-);
+});
 
 module.exports = router; 

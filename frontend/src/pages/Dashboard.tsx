@@ -68,7 +68,7 @@ const Dashboard = () => {
                   <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
                 </div>
                 <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${stat.color} flex items-center justify-center`}>
-                  <img src={logo} alt="Aintru Logo" className="w-6 h-auto" />
+                  <stat.icon className="w-7 h-7 text-white" />
                 </div>
               </div>
             </motion.div>

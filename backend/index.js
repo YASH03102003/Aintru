@@ -4,6 +4,12 @@ const cors = require('cors');
 const session = require('express-session');
 const passport = require('passport');
 const authRoutes = require('./routes/auth');
+const interviewRoutes = require('./routes/interview');
+const resumeRoutes = require('./routes/resume');
+const analyticsRoutes = require('./routes/analytics');
+const suggestionsRoutes = require('./routes/suggestions');
+const dashboardRoutes = require('./routes/dashboard');
+const mongoose = require('mongoose');
 
 // Import Passport configuration
 require('./config/passport');
@@ -31,11 +37,28 @@ app.use(express.json());
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Connect MongoDB
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
+mongoose.connection.on('connected', () => {
+  console.log('MongoDB connected');
+});
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB connection error:', err);
+});
+
 app.get('/', (req, res) => {
   res.json({ message: 'Aintru backend is running!' });
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/interview', interviewRoutes);
+app.use('/api/resume', resumeRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/suggestions', suggestionsRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 const PORT = 3000;
 app.listen(PORT, () => {

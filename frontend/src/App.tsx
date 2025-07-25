@@ -17,6 +17,10 @@ import Contact from './pages/Contact';
 import SignUpPage from './pages/SignUpPage';
 import VerifyPage from './pages/VerifyPage';
 import OAuthSuccess from './pages/OAuthSuccess';
+import Analytics from './pages/Analytics';
+import JobMatches from './pages/JobMatches';
+import Profile from './pages/Profile';
+import ProfileCompletion from './pages/ProfileCompletion';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -49,10 +53,14 @@ function App() {
             <Route path="/oauth-success" element={<OAuthSuccess />} />
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/interview" element={<ProtectedRoute><MockInterview /></ProtectedRoute>} />
+            <Route path="/mock-interview" element={<ProtectedRoute><MockInterview /></ProtectedRoute>} />
             <Route path="/resume-builder" element={<ProtectedRoute><ResumeBuilder /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/verify" element={<VerifyPage />} />
+            <Route path="/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
+            <Route path="/job-matches" element={<ProtectedRoute><JobMatches /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+            <Route path="/complete-profile" element={<ProtectedRoute><ProfileCompletion /></ProtectedRoute>} />
           </Routes>
         </motion.main>
       </div>
