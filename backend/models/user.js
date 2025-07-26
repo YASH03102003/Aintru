@@ -21,6 +21,8 @@ const UserSchema = new mongoose.Schema({
   currentPosition: { type: String },
   isVerified: { type: Boolean, default: false },
   verificationToken: { type: String },
+  provider: { type: String }, // 'google', 'github', or undefined for local
+  providerId: { type: String }, // OAuth provider user ID
   createdAt: { type: Date, default: Date.now }
 });
 

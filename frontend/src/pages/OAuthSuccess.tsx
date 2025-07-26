@@ -10,7 +10,6 @@ const OAuthSuccess = () => {
 
   useEffect(() => {
     const token = searchParams.get('token');
-    const userParam = searchParams.get('user');
     const error = searchParams.get('error');
 
     if (error) {
@@ -19,22 +18,26 @@ const OAuthSuccess = () => {
       return;
     }
 
-    if (token && userParam) {
-      try {
-        const user = JSON.parse(decodeURIComponent(userParam));
-        
-        // Store token and user data
-        localStorage.setItem('token', token);
-        login(user);
-        
-        // Redirect to dashboard
-        navigate('/dashboard');
-      } catch (error) {
-        console.error('Error parsing OAuth response:', error);
-        navigate('/login?error=oauth_failed');
-      }
+    if (token) {
+      localStorage.setItem('token', token);
+      // Fetch user profile with token and update Zustand store
+      fetch('http://localhost:3000/api/auth/me', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error('Failed to fetch user');
+          return res.json();
+        })
+        .then((user) => {
+          login(user);
+          navigate('/dashboard');
+        })
+        .catch(() => {
+          navigate('/login?error=oauth_failed');
+        });
     } else {
-      // Missing required parameters
       navigate('/login?error=oauth_failed');
     }
   }, [searchParams, navigate, login]);

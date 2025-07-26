@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const passport = require('passport');
 
 // Helper: create Nodemailer transporter
 const transporter = nodemailer.createTransport({
@@ -143,5 +144,60 @@ router.post('/complete-profile', authenticateJWT, async (req, res) => {
     res.status(400).json({ success: false, error: err.message });
   }
 });
+
+// GET /api/auth/me (JWT protected)
+router.get('/me', authenticateJWT, async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select('-password -verificationToken');
+    if (!user) return res.status(404).json({ success: false, error: 'User not found.' });
+    res.json(user);
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Google OAuth routes
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+router.get('/google/callback', 
+  passport.authenticate('google', { failureRedirect: 'http://localhost:5173/login?error=oauth_failed' }),
+  (req, res) => {
+    console.log('Google OAuth callback route hit');
+    console.log('User in request:', req.user);
+    
+    if (!req.user) {
+      console.log('No user found in request, redirecting to login');
+      return res.redirect('http://localhost:5173/login?error=oauth_failed');
+    }
+    
+    console.log('Generating JWT for user:', req.user._id);
+    const token = jwt.sign({ userId: req.user._id }, process.env.JWT_SECRET || 'your_jwt_secret', { expiresIn: '7d' });
+    
+    console.log('Redirecting to frontend with token');
+    res.redirect(`http://localhost:5173/oauth-success?token=${token}`);
+  }
+);
+
+// GitHub OAuth routes
+router.get('/github', passport.authenticate('github', { scope: ['user:email'] }));
+
+router.get('/github/callback', 
+  passport.authenticate('github', { failureRedirect: 'http://localhost:5173/login?error=oauth_failed' }),
+  (req, res) => {
+    console.log('GitHub OAuth callback route hit');
+    console.log('User in request:', req.user);
+    
+    if (!req.user) {
+      console.log('No user found in request, redirecting to login');
+      return res.redirect('http://localhost:5173/login?error=oauth_failed');
+    }
+    
+    console.log('Generating JWT for user:', req.user._id);
+    const token = jwt.sign({ userId: req.user._id }, process.env.JWT_SECRET || 'your_jwt_secret', { expiresIn: '7d' });
+    
+    console.log('Redirecting to frontend with token');
+    res.redirect(`http://localhost:5173/oauth-success?token=${token}`);
+  }
+);
 
 module.exports = router; 

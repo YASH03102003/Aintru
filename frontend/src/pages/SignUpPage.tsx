@@ -52,8 +52,17 @@ const SignUpPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password }),
       });
-      if (!res.ok) throw new Error('Signup failed');
       const data = await res.json();
+      if (!res.ok) {
+        // Handle specific error cases
+        if (res.status === 409) {
+          throw new Error('An account with this email already exists. Please log in or use a different email.');
+        } else if (res.status === 400) {
+          throw new Error(data.error || 'Please check your input and try again.');
+        } else {
+          throw new Error(data.error || 'Signup failed. Please try again.');
+        }
+      }
       setSuccess(data.message || 'Signup successful. Please check your email to verify your account.');
       // Do NOT log in or redirect to dashboard here
     } catch (err: any) {
